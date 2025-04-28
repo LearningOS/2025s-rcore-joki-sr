@@ -14,9 +14,14 @@ mod switch;
 #[allow(clippy::module_inception)]
 mod task;
 
+use alloc::vec;
+use alloc::vec::Vec;
+
 use crate::config::MAX_APP_NUM;
 use crate::loader::{get_num_app, init_app_cx};
 use crate::sync::UPSafeCell;
+use crate::syscall::SYSCALL_MAXNUM;
+
 use lazy_static::*;
 use switch::__switch;
 pub use task::{TaskControlBlock, TaskStatus};
@@ -45,6 +50,9 @@ pub struct TaskManagerInner {
     tasks: [TaskControlBlock; MAX_APP_NUM],
     /// id of current `Running` task
     current_task: usize,
+    /// trace
+    /// Vec<Vec<usize>>，每个任务有一个系统调用次数数组
+    syscall_times_of_cur_task: Vec<Vec<usize>>,
 }
 
 lazy_static! {
@@ -65,6 +73,7 @@ lazy_static! {
                 UPSafeCell::new(TaskManagerInner {
                     tasks,
                     current_task: 0,
+                    syscall_times_of_cur_task: vec![vec![0; SYSCALL_MAXNUM]],
                 })
             },
         }
@@ -134,6 +143,27 @@ impl TaskManager {
         } else {
             panic!("All applications completed!");
         }
+    }
+
+    /// trace_syscall：给当前任务的某个系统调用次数加1
+    pub fn trace_syscall(&self, syscall_id:usize)->(){
+        let mut inner = self.inner.exclusive_access();
+        let current = inner.current_task;
+
+        while current >= inner.syscall_times_of_cur_task.len(){
+            inner.syscall_times_of_cur_task.push(vec![0;SYSCALL_MAXNUM]);
+        }
+        inner.syscall_times_of_cur_task[current][syscall_id]+=1;
+    }
+    /// get_trace_syscall：查询当前任务的某个系统调用次数
+    pub fn get_trace_syscall(&self, syscall_id:usize)->usize{
+        let inner = self.inner.exclusive_access();
+        let current = inner.current_task;
+
+        inner.syscall_times_of_cur_task
+            .get(current)
+            .map(|syscalls| syscalls[syscall_id])
+            .unwrap_or(0)
     }
 }
 
