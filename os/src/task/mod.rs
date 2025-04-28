@@ -73,7 +73,7 @@ lazy_static! {
                 UPSafeCell::new(TaskManagerInner {
                     tasks,
                     current_task: 0,
-                    syscall_times_of_cur_task: vec![vec![0; SYSCALL_MAXNUM]],
+                    syscall_times_of_cur_task: vec![vec![0; SYSCALL_MAXNUM]; num_app],
                 })
             },
         }
