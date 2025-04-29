@@ -150,13 +150,13 @@ impl TaskManager {
         let mut inner = self.inner.exclusive_access();
         let current = inner.current_task;
         
-        assert!(
-            current < inner.syscall_times_of_cur_task.len(),
-            "Invalid current_task index in trace_syscall!"
-        );
-        // while current >= inner.syscall_times_of_cur_task.len(){
-        //     inner.syscall_times_of_cur_task.push(vec![0;SYSCALL_MAXNUM]);
-        // }
+        // assert!(
+        //     current < inner.syscall_times_of_cur_task.len(),
+        //     "Invalid current_task index in trace_syscall!"
+        // );
+        while current >= inner.syscall_times_of_cur_task.len(){
+            inner.syscall_times_of_cur_task.push(vec![0;SYSCALL_MAXNUM]);
+        }
         inner.syscall_times_of_cur_task[current][syscall_id]+=1;
     }
     /// get_trace_syscall：查询当前任务的某个系统调用次数
