@@ -12,58 +12,74 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Build doc
+
+      - name: Build Documentation
         run: |
           git clone https://github.com/LearningOS/rCore-Tutorial-Test-2025S.git user
           cd os
           make
           cargo doc --no-deps --verbose
-      - name: Push to gh-pages
+
+      - name: Deploy Doc to gh-pages
         uses: peaceiris/actions-gh-pages@v3
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
           publish_dir: ./os/target/riscv64gc-unknown-none-elf/doc
           destination_dir: ${{ github.ref_name }}
+
   basic-test:
     runs-on: ubuntu-latest
     outputs:
-      points: ${{ steps.end.outputs.points}}
+      points: ${{ steps.end.outputs.points }}
     container:
       image: duskmoon/dev-env:rcore-ci
     steps:
-      - name: Remove Cargo proxy config
+      - name: Remove Cargo Proxy Config
         run: |
           unset RUSTUP_DIST_SERVER
           unset RUSTUP_UPDATE_ROOT
           unset CARGO_HTTP_MULTIPLEXING
-          # 删除或重置全局配置
-          rm ${CARGO_HOME}/config.toml || true
-          rm -rf rm ${CARGO_HOME}/registry/* || true
+          rm -f ${CARGO_HOME}/config.toml || true
+          rm -rf ${CARGO_HOME}/registry/* || true
+
       - uses: actions/checkout@v4
-      - name: Run tests
+
+      - name: Prepare Environment
         run: |
+          echo "::group::Prepare Environment"
           qemu-system-riscv64 --version
           rustup target add riscv64gc-unknown-none-elf
           git config --global --add safe.directory /__w/${{ github.event.repository.name }}/${{ github.event.repository.name }}
           git clone https://github.com/LearningOS/rCore-Tutorial-Checker-2025S.git ci-user
           git clone https://github.com/LearningOS/rCore-Tutorial-Test-2025S.git ci-user/user
-          # ID=`git rev-parse --abbrev-ref HEAD | grep -oP 'ch\K[0-9]'`
-      # - name: Echo ID
-      #   run: |
-      #     echo "ID=$ID"
-      #     cd ci-user
-      - name: Run Make Test
+          echo "::endgroup::"
+
+      - name: Determine Chapter ID
+        id: chapter
         run: |
-          cd ci-user && make test CHAPTER=3 > ../output.txt
-          cat ../output.txt
-      - name: end
+          BRANCH=$(git rev-parse --abbrev-ref HEAD)
+          echo "Branch: $BRANCH"
+          ID=$(echo $BRANCH | grep -oP 'ch\K[0-9]+')
+          echo "Chapter ID: $ID"
+          echo "id=$ID" >> $GITHUB_OUTPUT
+
+      - name: Run Tests
+        run: |
+          echo "::group::Run Tests"
+          cd ci-user
+          make test CHAPTER=${{ steps.chapter.outputs.id }} passwd= 2>&1 | tee ../output.txt
+          echo "::endgroup::"
+
+      - name: Collect Points
         id: end
         run: |
-          cat output.txt | grep -a "Test passed" | grep -oP "\d{1,}/\d{1,}" | xargs -i echo "points={}"
-          cat output.txt | grep -a "Test passed" | grep -oP "\d{1,}/\d{1,}" | xargs -i echo "points={}" >> $GITHUB_OUTPUT
+          POINTS=$(grep -a "Test passed" output.txt | grep -oP "\d+/\d+" | tail -n1)
+          echo "points=$POINTS"
+          echo "points=$POINTS" >> $GITHUB_OUTPUT
+
   deploy:
     if: github.repository != 'LearningOS/rCore-Camp-Code-2025S'
-    name: Deploy to pages
+    name: Deploy to Pages
     needs: basic-test
     runs-on: ubuntu-latest
     permissions: write-all
@@ -72,12 +88,14 @@ jobs:
         continue-on-error: true
         with:
           ref: 'gh-pages'
+
       - name: Save Log File
         uses: yfblock/multi-rank-log@main
         with:
           public-dir: classroom
           points: ${{ needs.basic-test.outputs.points }}
-      - name: GitHub Pages
+
+      - name: Deploy to GitHub Pages
         uses: crazy-max/ghaction-github-pages@v3
         with:
           target_branch: gh-pages
@@ -85,19 +103,19 @@ jobs:
           keep_history: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      - name: check score
+
+      - name: Report Score
         env:
           course_id: ${{ secrets.RCORE_2025_SPRING_COURSE_ID }}
           post_api: ${{ secrets.RCORE_2025_SPRING_POST_API }}
           token: ${{ secrets.RCORE_2025_SPRING_TOKEN }}
         run: |
-          score=$(( $(grep -o 'ch' classroom/latest.json | wc -l) * 100))
+          score=$(( $(grep -o 'ch' classroom/latest.json | wc -l) * 100 ))
           cat classroom/latest.json
-          echo $score
+          echo "Total Score: $score"
 
           github_user="${{ github.actor }}"
 
-          # 生成 JSON 结果
           score_json=$(jq -n \
             --arg channel "github" \
             --argjson courseId "$course_id" \
@@ -106,18 +124,17 @@ jobs:
             --argjson totalScore 500 \
             '{channel: $channel, courseId: $courseId, name: $name, score: $score, totalScore: $totalScore}')
 
-            response=$(curl -X POST $post_api \
+          response=$(curl -X POST $post_api \
             -H "accept: application/json;charset=utf-8" \
             -H "Content-Type: application/json" \
             -H "token: $token" \
-            -d "$score_json" \
-            -v)
+            -d "$score_json" -v)
 
-            echo "Response: $response"
+          echo "Response: $response"
 
-            if echo "$response" | grep -q '"result":1'; then
-            echo "Success: The result field contains 1."
-            else
-            echo "Error: The result field does not contain 1."
+          if echo "$response" | grep -q '"result":1'; then
+            echo "✅ Successfully posted score."
+          else
+            echo "❌ Failed to post score."
             exit 1
-            fi
+          fi
