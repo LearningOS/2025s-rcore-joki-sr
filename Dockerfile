@@ -1,4 +1,3 @@
-# syntax=docker/dockerfile:1
 # This Dockerfile is adapted from https://github.com/LearningOS/rCore-Tutorial-v3/blob/main/Dockerfile
 # with the following major updates:
 # - ubuntu 18.04 -> 20.04
@@ -11,6 +10,12 @@ ARG HOME=/root
 
 # 0. Install general tools
 ARG DEBIAN_FRONTEND=noninteractive
+
+# >>> 新加内容：换国内源
+RUN sed -i 's|http://archive.ubuntu.com/ubuntu/|http://mirrors.ustc.edu.cn/ubuntu/|g' /etc/apt/sources.list && \
+    sed -i 's|http://security.ubuntu.com/ubuntu/|http://mirrors.ustc.edu.cn/ubuntu/|g' /etc/apt/sources.list
+
+
 RUN apt-get update && \
     apt-get install -y \
         curl \
@@ -83,8 +88,8 @@ RUN cargo install cargo-binutils; \
 
 # 3. Cargo vendor
 WORKDIR ${HOME}
-COPY os/vendor ./os-vendor
-COPY user/vendor ./user-vendor
+# COPY os/vendor ./os-vendor
+# COPY user/vendor ./user-vendor
 
 # Ready to go
 WORKDIR ${HOME}
